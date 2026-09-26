@@ -1,0 +1,18 @@
+Task 1:
+
+Initially i started the model and asked it to Say hello. This was its answer: "Hello! It's an honor to meet you and wish you a pleasant journey of knowledge and understanding."
+After writing an xMIx application the adds a constant vector (of 8's) to the residual stream in each layer, its output was complete gibberish and not even in english (or ascii).
+It is worth noting that the SteeringVectorScaledAdder (which i used in the application) uses triton, so i had to modify its 'forward'
+function to manually add the vectors in case triton isn't available.
+
+To make sure the gibberish was a valid result and not a broken model I tried a few things:
+- Apply a 2nd application which steers with -8. This didn't work because it conflicts with the previous one.
+- Remove the addition and create a new application that writes twice in each layer. +8 and -8.
+  This didn't work because it conflicts with itself (which took me a few minutes to realize xD).
+My takeaway was that I can't steer at the same stage at the same layer from multiple apps (all tries were to all layers at mlp.post).
+
+My final tests were to change the constant vector.
+We know 8 was total gibberish.
+0.1 was in ascii and had words, but they were random and didn't mean anything.
+0.001 resulted in a coherent 'Hello' message with slightly different wording from the first.
+This was enough for me to conclude that the application successfully changed the vectors at each layer.
