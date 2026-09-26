@@ -32,7 +32,10 @@ from typing import Callable,Any
 import torch
 from torch import nn
 from transformers import Qwen2Config
-from cuda.bindings import driver as cuda
+try:
+    from cuda.bindings import driver as cuda
+except:
+    pass
 
 from vllm.activations_extractor.write_activations import at_least_half_positive,conditional_add_vector_to_activations
 from vllm.activations_extractor.write_activations import (add_vector_to_activations,
@@ -427,7 +430,8 @@ class Qwen2Model(nn.Module):
     def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
         return self.embed_tokens(input_ids)
     def init_token_detector(self):
-        self.token_detector = EOLTokenDetector(eol_token_ids=EOL_TENSOR,vocab_size= self.vocab_size)
+        pass
+        # self.token_detector = EOLTokenDetector(eol_token_ids=EOL_TENSOR,vocab_size= self.vocab_size)
 
     def forward(
         self,

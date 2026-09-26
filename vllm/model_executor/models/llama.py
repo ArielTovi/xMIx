@@ -76,100 +76,103 @@ from .utils import (
 )
 
 # Misha change - START
-import triton
-import triton.language as tl
+try:
+    import triton
+    import triton.language as tl
+except:
+    pass
 import torch
 
-@triton.jit
-def safe_copy_kernel(
-    src_ptr,
-    dst_ptr,
-    current_input_rows,    # The variable number of rows coming in (e.g. 1 or 100)
-    max_buffer_rows,       # Your buffer's fixed capacity (e.g. 16384)
-    hidden_size,           # The hidden dimension (e.g. 4096)
-    BLOCK_SIZE: tl.constexpr
-):
-    # 1. Calculate the global index for this thread
-    # We parallelize over the FLATTENED buffer (rows * cols)
-    pid = tl.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    # 2. Map flat index to Row/Col
-    # This lets us check which row we are working on
-    row_idx = offset // hidden_size                                
-    # 3. Create the Guard Mask (The "Magic" Part)
-    # We must be within the Buffer's physical limits
-    buffer_safe = offset < (max_buffer_rows * hidden_size)                                                
-    # We must ALSO be within the Input's current actual size
-    # This handles the "Partial Copy" logic on the GPU, not in Python
-    input_safe = row_idx < current_input_rows
-    # Combine guards: Only copy if we are inside the buffer AND inside the input data
-    mask = buffer_safe & input_safe
-    # 4. Copy
-    # If the mask is False (e.g. row_idx is 500, but we only have 10 input rows),
-    # this thread does nothing. Zero overhead.
-    data = tl.load(src_ptr + offset, mask=mask)
-    tl.store(dst_ptr + offset, data, mask=mask)
-@triton.jit
-def partial_copy_kernel(
-    src_ptr,
-    dst_ptr,
-    n_rows,
-    n_cols,
-    total_elements,  # n_rows * n_cols
-    BLOCK_SIZE: tl.constexpr,
-):
-    # Map the program ID to the data index
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-                
-    # Generate offsets for this block
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-                            
-    # Create a mask to ensure we don't write past the end of the valid data
-    # This effectively handles the "partial" aspect
-    mask = offsets < total_elements
-    # Load from source and store to destination
-    # Pointers are effectively 1D here
-    data = tl.load(src_ptr + offsets, mask=mask)
-    tl.store(dst_ptr + offsets, data, mask=mask)
-
-@triton.jit
-def unsafe_copy_kernel(
-    src_ptr,
-    dest_ptr,
-    n_elements,
-    BLOCK_SIZE: tl.constexpr
-):
-    # Standard parallelization: Each program ID handles a block of data
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-
-    # Create a mask to prevent out-of-bounds access
-    mask = offsets < n_elements
-
-    # Load from the dynamic source
-    # We treat both tensors as flat 1D arrays of floats
-    val = tl.load(src_ptr + offsets, mask=mask)
-
-    # Store to the static destination (always starting at index 0)
-    tl.store(dest_ptr + offsets, val, mask=mask)
-
-def graph_safe_copy(src_tensor, dest_buffer):
-    #Copies src_tensor to dest_buffer ignoring shape mismatches.
-    #Assumes src_tensor fits into dest_buffer.
-    n_elements = src_tensor.numel()
-
-    # We treat the operation as a flat 1D copy
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
-
-    unsafe_copy_kernel[grid](
-        src_tensor,        # Source (Dynamic Shape)
-        dest_buffer,       # Dest (Static Max Shape)
-        n_elements,        # The "dynamic" size (Constant during graph capture)
-        BLOCK_SIZE=1024,
-    )
-# Misha change - END
+# @triton.jit
+# def safe_copy_kernel(
+#     src_ptr,
+#     dst_ptr,
+#     current_input_rows,    # The variable number of rows coming in (e.g. 1 or 100)
+#     max_buffer_rows,       # Your buffer's fixed capacity (e.g. 16384)
+#     hidden_size,           # The hidden dimension (e.g. 4096)
+#     BLOCK_SIZE: tl.constexpr
+# ):
+#     # 1. Calculate the global index for this thread
+#     # We parallelize over the FLATTENED buffer (rows * cols)
+#     pid = tl.program_id(0)
+#     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+#     # 2. Map flat index to Row/Col
+#     # This lets us check which row we are working on
+#     row_idx = offset // hidden_size
+#     # 3. Create the Guard Mask (The "Magic" Part)
+#     # We must be within the Buffer's physical limits
+#     buffer_safe = offset < (max_buffer_rows * hidden_size)
+#     # We must ALSO be within the Input's current actual size
+#     # This handles the "Partial Copy" logic on the GPU, not in Python
+#     input_safe = row_idx < current_input_rows
+#     # Combine guards: Only copy if we are inside the buffer AND inside the input data
+#     mask = buffer_safe & input_safe
+#     # 4. Copy
+#     # If the mask is False (e.g. row_idx is 500, but we only have 10 input rows),
+#     # this thread does nothing. Zero overhead.
+#     data = tl.load(src_ptr + offset, mask=mask)
+#     tl.store(dst_ptr + offset, data, mask=mask)
+# @triton.jit
+# def partial_copy_kernel(
+#     src_ptr,
+#     dst_ptr,
+#     n_rows,
+#     n_cols,
+#     total_elements,  # n_rows * n_cols
+#     BLOCK_SIZE: tl.constexpr,
+# ):
+#     # Map the program ID to the data index
+#     pid = tl.program_id(axis=0)
+#     block_start = pid * BLOCK_SIZE
+#
+#     # Generate offsets for this block
+#     offsets = block_start + tl.arange(0, BLOCK_SIZE)
+#
+#     # Create a mask to ensure we don't write past the end of the valid data
+#     # This effectively handles the "partial" aspect
+#     mask = offsets < total_elements
+#     # Load from source and store to destination
+#     # Pointers are effectively 1D here
+#     data = tl.load(src_ptr + offsets, mask=mask)
+#     tl.store(dst_ptr + offsets, data, mask=mask)
+#
+# @triton.jit
+# def unsafe_copy_kernel(
+#     src_ptr,
+#     dest_ptr,
+#     n_elements,
+#     BLOCK_SIZE: tl.constexpr
+# ):
+#     # Standard parallelization: Each program ID handles a block of data
+#     pid = tl.program_id(axis=0)
+#     block_start = pid * BLOCK_SIZE
+#     offsets = block_start + tl.arange(0, BLOCK_SIZE)
+#
+#     # Create a mask to prevent out-of-bounds access
+#     mask = offsets < n_elements
+#
+#     # Load from the dynamic source
+#     # We treat both tensors as flat 1D arrays of floats
+#     val = tl.load(src_ptr + offsets, mask=mask)
+#
+#     # Store to the static destination (always starting at index 0)
+#     tl.store(dest_ptr + offsets, val, mask=mask)
+#
+# def graph_safe_copy(src_tensor, dest_buffer):
+#     #Copies src_tensor to dest_buffer ignoring shape mismatches.
+#     #Assumes src_tensor fits into dest_buffer.
+#     n_elements = src_tensor.numel()
+#
+#     # We treat the operation as a flat 1D copy
+#     grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+#
+#     unsafe_copy_kernel[grid](
+#         src_tensor,        # Source (Dynamic Shape)
+#         dest_buffer,       # Dest (Static Max Shape)
+#         n_elements,        # The "dynamic" size (Constant during graph capture)
+#         BLOCK_SIZE=1024,
+#     )
+# # Misha change - END
 
 class LlamaMLP(nn.Module):
     def __init__(

@@ -64,7 +64,7 @@ class Sampler(nn.Module):
         self.topk_topp_sampler = TopKTopPSampler(logprobs_mode)
         self.pin_memory = is_pin_memory_available()
         self.logprobs_mode = logprobs_mode
-        self.eol_tensor = torch.tensor(EOL_TENSOR, device='cuda')
+        # self.eol_tensor = torch.tensor(EOL_TENSOR, device='cuda')
 
         # Boolean lookup table: eol_lookup[token_id] == True iff token_id is EOL.
         # Single gather op replaces O(N x 600) torch.isin call.

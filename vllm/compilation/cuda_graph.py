@@ -10,8 +10,11 @@ from unittest.mock import patch
 import torch
 import ctypes
 import os,subprocess
-from cuda.bindings import driver as cuda
-from cuda.bindings import nvrtc
+try:
+    from cuda.bindings import driver as cuda
+    from cuda.bindings import nvrtc
+except:
+    pass
 #from cuda.bindings import runtime as cudart
 import traceback
 from vllm.distributed.parallel_state import (
