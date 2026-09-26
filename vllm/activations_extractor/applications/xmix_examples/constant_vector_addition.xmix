@@ -1,0 +1,3 @@
+self.arbitrary_vector = torch.full((self.hidden_size,), 1, device=self.device, dtype=self.model_config.dtype)
+self.steer = SteeringVectorScaledAdder(self.arbitrary_vector, 8, 0)
+m.write(self.steer.run).layer("all").submodule("mlp.post")

@@ -486,6 +486,10 @@ class GPUModelRunner(
         # Sampler
         
         # xmix:anchor runner_setup
+        # xmix:begin constant_vector_addition runner_setup
+        self.arbitrary_vector = torch.full((self.hidden_size,), 1, device=self.device, dtype=self.model_config.dtype)
+        self.steer = SteeringVectorScaledAdder(self.arbitrary_vector, 8, 0)
+        # xmix:end constant_vector_addition runner_setup
         self.sampler = Sampler(logprobs_mode=self.model_config.logprobs_mode)
 
         self.eplb_state: EplbState | None = None
@@ -4159,6 +4163,13 @@ class GPUModelRunner(
                 #num_experts = hf.num_local_experts
 
                 # xmix:anchor runner_postload 
+                # xmix:begin constant_vector_addition runner_postload
+                # xmix:footprint constant_vector_addition w mlp.post all
+                # ./vllm/activations_extractor/applications/xmix_examples/constant_vector_addition.xmix:3  m.write(self.steer.run).layer("all").submodule("mlp.post")
+                # steer SteeringVectorScaledAdder on ALL layers at 'mlp.post' (flag 'w')
+                for layer in self.model.model.layers:
+                    layer.set_post_mlp_hook(self.steer.run, "w")
+                # xmix:end constant_vector_addition runner_postload
                 #if hasattr(self.model.model,"layers"):
                     #self.model.model.token_detector.set_output_buffers(steer_instance.token_indices,steer_instance.n_valid_buf)
                     #for layer in self.model.model.layers:
