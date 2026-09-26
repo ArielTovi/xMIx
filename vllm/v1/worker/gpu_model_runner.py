@@ -418,11 +418,11 @@ class GPUModelRunner(
         reflection_avg_vector_path = "/home/michael.blum/vLLM_Patched/vllm/activations_extractor/applications/seal_app_2/reflection_avg_vector.pt"
         transition_avg_vector_path = "/home/michael.blum/vLLM_Patched/vllm/activations_extractor/applications/seal_app_2/transition_avg_vector.pt"
         #self.steering_vector = torch.load(vector_path)
-        self.raw_execution_vector = torch.load(execution_avg_vector_path, map_location=self.device, weights_only=True).to(self.model_config.dtype)
-        self.raw_reflection_vector = torch.load(reflection_avg_vector_path , map_location=self.device, weights_only=True).to(self.model_config.dtype)
-        self.raw_transition_vector = torch.load(transition_avg_vector_path , map_location=self.device, weights_only=True).to(self.model_config.dtype)
-        self.combined_tensor = torch.stack([self.raw_execution_vector,self.raw_reflection_vector,self.raw_transition_vector], dim=0)
-        self.refusal_vector = torch.load(refusal_vector_path, map_location=self.device, weights_only=True).to(self.model_config.dtype)
+        # self.raw_execution_vector = torch.load(execution_avg_vector_path, map_location=self.device, weights_only=True).to(self.model_config.dtype)
+        # self.raw_reflection_vector = torch.load(reflection_avg_vector_path , map_location=self.device, weights_only=True).to(self.model_config.dtype)
+        # self.raw_transition_vector = torch.load(transition_avg_vector_path , map_location=self.device, weights_only=True).to(self.model_config.dtype)
+        # self.combined_tensor = torch.stack([self.raw_execution_vector,self.raw_reflection_vector,self.raw_transition_vector], dim=0)
+        # self.refusal_vector = torch.load(refusal_vector_path, map_location=self.device, weights_only=True).to(self.model_config.dtype)
         self.arbitrary_vector = torch.full((self.hidden_size,), 0.1,device=self.device, dtype=self.model_config.dtype)
         #self.refusal_vector = torch.nn.functional.normalize(raw_refusal_vector, p=2, dim=-1).unsqueeze(0)
         self.steered_tokens_index_vector= torch.zeros((1,),dtype = torch.int32, device=self.device)
@@ -437,15 +437,15 @@ class GPUModelRunner(
         #num_experts = hf.num_local_experts
         # (L, E) sign tensor — replace with torch.load(...) of a real SteerMoE artifact
         #self.moe_router_weights = torch.zeros((num_layers, num_experts), dtype=torch.int32, device=self.device,)
-        self.moe_router_weights = torch.load( "/home/michael.blum/vLLM_Patched/vllm/activations_extractor/applications/steermoe_app_5/moe_weights_mixtral_safety.pt",
-            map_location=self.device,)
-        # Shared per-token gate. All-ones = SteerMoE-faithful (unconditional).
+        # self.moe_router_weights = torch.load( "/home/michael.blum/vLLM_Patched/vllm/activations_extractor/applications/steermoe_app_5/moe_weights_mixtral_safety.pt",
+        #     map_location=self.device,)
+        # # Shared per-token gate. All-ones = SteerMoE-faithful (unconditional).
         self.moe_router_input_map = torch.ones(2048, dtype=torch.int32, device=self.device)
         self.moe_router_steerers = []
         # APP 6
         self.w6 = torch.rand((self.hidden_size, self.hidden_size),device=self.device,dtype=self.model_config.dtype)        
         self.b6 = self.fc1_bias = torch.rand((self.hidden_size),dtype=self.model_config.dtype,device=self.device) 
-        self.linear_steer = SteeringLinear(W =self.w6, b = self.b6, vec_indices = self.vec_indices, max_tokens = 2048) 
+        # self.linear_steer = SteeringLinear(W =self.w6, b = self.b6, vec_indices = self.vec_indices, max_tokens = 2048)
 
         # App 2
         MAX_VECS=3
@@ -458,19 +458,19 @@ class GPUModelRunner(
                 
         #self.app_2_num_vec_steer_indices= torch.zeros((2048,MAX_VECS),dtype = torch.int32, device=self.device)
 
-        self.steer_instance = SteeringVectorAdder(r = self.combined_tensor, scales=self.scales_across_all_tokens,
-                                                     vec_indices=  self.indices_across_all_tokens,
-                                                     n_vecs_per_token=self.num_of_vecs_across_all_tokens)
+        # self.steer_instance = SteeringVectorAdder(r = self.combined_tensor, scales=self.scales_across_all_tokens,
+        #                                              vec_indices=  self.indices_across_all_tokens,
+        #                                              n_vecs_per_token=self.num_of_vecs_across_all_tokens)
         # App 7
         self.r_7 = torch.rand((self.hidden_size),dtype=self.model_config.dtype,device=self.device)  
         self.scalar_7 = torch.rand((1),dtype=self.model_config.dtype,device=self.device)
-        self.kl_than_steer = SteeringVectorScaledAdder(r=self.r_7,coeff=self.scalar_7,max_tokens=2048)
+        # self.kl_than_steer = SteeringVectorScaledAdder(r=self.r_7,coeff=self.scalar_7,max_tokens=2048)
         # Misha change - end
         # App 4
         # Truth Probe, 1 Linear Probe, LLMs Know More Than They Show Paper
         self.truth_probe_weight = torch.rand((1,self.model_config.hidden_size),dtype=self.model_config.dtype,device = self.device)
         self.truth_probe_bias = torch.rand((1,),dtype=self.model_config.dtype,device = self.device)
-        self.truth_probe = LinearProbe(max_tokens = 2048, weights= self.truth_probe_weight, bias = self.truth_probe_bias)
+        # self.truth_probe = LinearProbe(max_tokens = 2048, weights= self.truth_probe_weight, bias = self.truth_probe_bias)
         # App 1 Config for Llama (for real refusal):
         #steer_refusal_vec = SteeringVectorDotSubtractNormalized(hidden_size = self.model_config.hidden_size, max_tokens = 2048,steering_vector = self.refusal_vector,
         #    vec_indices = self.vec_indices,
