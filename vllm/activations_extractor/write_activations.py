@@ -8,7 +8,7 @@ import logging
 
 from packaging import version
 
-from vllm.triton_utils import tl, triton
+from vllm.triton_utils import tl, triton, HAS_TRITON
 
 
 @torch.library.custom_op("mylib::load_sv", mutates_args=())
@@ -149,12 +149,15 @@ class SteeringVectorScaledAdder(torch.nn.Module):
         hidden_size = x.shape[-1]
         n_rows      = x.numel() // hidden_size
         x_2d        = x.view(n_rows, hidden_size)
-        grid        = (n_rows, triton.cdiv(hidden_size, self._BLOCK_SIZE))
-        add_scaled_vector_kernel[grid](
-            x_2d, self.r, self.coeff,
-            n_rows, hidden_size,
-            BLOCK_SIZE=self._BLOCK_SIZE,
-        )
+        if HAS_TRITON:
+            grid        = (n_rows, triton.cdiv(hidden_size, self._BLOCK_SIZE))
+            add_scaled_vector_kernel[grid](
+                x_2d, self.r, self.coeff,
+                n_rows, hidden_size,
+                BLOCK_SIZE=self._BLOCK_SIZE,
+            )
+        else:
+            x_2d += self.coeff * self.r
         return x
 
     def run(self, x: torch.Tensor, r: torch.Tensor,
