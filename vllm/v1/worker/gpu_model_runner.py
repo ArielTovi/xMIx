@@ -87,6 +87,7 @@ from vllm.pooling_params import PoolingParams
 from vllm.sampling_params import SamplingType
 from vllm.sequence import IntermediateTensors
 from vllm.tasks import GenerationTask, PoolingTask, SupportedTask
+from vllm.transformers_utils.tokenizer import init_tokenizer_from_configs
 from vllm.utils import length_from_prompt_token_ids_or_embeds
 from vllm.utils.jsontree import json_map_leaves
 from vllm.utils.math_utils import cdiv, round_up
@@ -310,6 +311,14 @@ class GPUModelRunner(
         self.kv_cache_dtype = kv_cache_dtype_str_to_dtype(
             cache_config.cache_dtype, self.model_config
         )
+        self.tokenizer = init_tokenizer_from_configs(self.model_config)
+        self.potential_target_tokens = self.tokenizer.encode("I", add_special_tokens=False)
+        self.target_token = None
+        if (1 == len(self.potential_target_tokens)):
+            self.target_token = self.potential_target_tokens[0]
+            logger.info(f"Targeting token for {self.model_config.model} 'I' -> {self.target_token}")
+        else:
+            logger.warning(f"No target token found for {self.model_config.model} 'I' -> found {self.potential_target_tokens}")
 
         self.is_pooling_model = model_config.runner_type == "pooling"
         self.enable_prompt_embeds = model_config.enable_prompt_embeds
@@ -486,10 +495,6 @@ class GPUModelRunner(
         # Sampler
         
         # xmix:anchor runner_setup
-        # xmix:begin constant_vector_addition runner_setup
-        self.arbitrary_vector = torch.full((self.hidden_size,), 1, device=self.device, dtype=self.model_config.dtype)
-        self.steer = SteeringVectorScaledAdder(self.arbitrary_vector, 8, 0)
-        # xmix:end constant_vector_addition runner_setup
         self.sampler = Sampler(logprobs_mode=self.model_config.logprobs_mode)
 
         self.eplb_state: EplbState | None = None
@@ -2581,19 +2586,25 @@ class GPUModelRunner(
             # Update output token ids with tokens sampled in last step
             # if async scheduling and required by current sampling params.
             self.input_batch.update_async_output_token_ids()
-            return self.sampler(
+            sampler_output = self.sampler(
                 logits=logits,
                 sampling_metadata=sampling_metadata,
             )
+        else:
+            sampler_output = self.rejection_sampler(
+                spec_decode_metadata,
+                None,  # draft_probs
+                logits,
+                sampling_metadata,
+            )
+            self._update_states_after_model_execute(sampler_output.sampled_token_ids)
 
-        sampler_output = self.rejection_sampler(
-            spec_decode_metadata,
-            None,  # draft_probs
-            logits,
-            sampling_metadata,
-        )
-        self._update_states_after_model_execute(sampler_output.sampled_token_ids)
+        if self.target_token is not None:
+            print_count = sampler_output.sampled_token_ids.flatten().tolist().count(self.target_token)
+            for i in range(print_count):
+                print("Ariel")
         return sampler_output
+
 
     def _bookkeeping_sync(
         self,
@@ -4163,13 +4174,6 @@ class GPUModelRunner(
                 #num_experts = hf.num_local_experts
 
                 # xmix:anchor runner_postload 
-                # xmix:begin constant_vector_addition runner_postload
-                # xmix:footprint constant_vector_addition w mlp.post all
-                # ./vllm/activations_extractor/applications/xmix_examples/constant_vector_addition.xmix:3  m.write(self.steer.run).layer("all").submodule("mlp.post")
-                # steer SteeringVectorScaledAdder on ALL layers at 'mlp.post' (flag 'w')
-                for layer in self.model.model.layers:
-                    layer.set_post_mlp_hook(self.steer.run, "w")
-                # xmix:end constant_vector_addition runner_postload
                 #if hasattr(self.model.model,"layers"):
                     #self.model.model.token_detector.set_output_buffers(steer_instance.token_indices,steer_instance.n_valid_buf)
                     #for layer in self.model.model.layers:
